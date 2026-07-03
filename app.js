@@ -1,9 +1,3 @@
-/* ═══════════════════════════════════════════════════════════
-   GUSERA · SATS — Self-Aware Trend System (web port)
-   Port dari Pine Script v6 "Self-Aware Trend System [GUSERA]"
-   Semua komputasi berjalan client-side di browser.
-   ═══════════════════════════════════════════════════════════ */
-
 const CONST = {
   MAX_HISTORY_SIGS: 100,
   BYPASS_SCORE: 12.0, MULT_SMOOTH_ALPHA: 0.15,
@@ -13,21 +7,44 @@ const CONST = {
   MAX_SCORE_WITH_VOLUME: 100, MAX_SCORE_NO_VOLUME: 95,
 };
 
-/* No default API key is shipped. Twelve Data keys are personal/rate-limited per account,
-   so embedding one here would mean every user of this file shares (and can view-source)
-   the same quota. Each user enters their own key, which is stored only in their browser's
-   localStorage (see persistApiKey/restoreApiKey below) — or they can use Mode CSV, which
-   needs no key at all. */
-const DEFAULT_API_KEY = '';
+/* Default keys shipped for personal use (hosted, used only by the owner).
+   Key #1 = utama, sisanya cadangan/failover — lihat fetchCandles() di bawah.
+   NOTE: karena file ini publicly hosted, key ini terlihat oleh siapa pun yang
+   membuka View Source. Aman untuk pemakaian pribadi, tapi jangan bagikan file
+   ini ke orang lain / repo publik tanpa mengganti key-nya dulu. */
+const DEFAULT_API_KEY = [
+  'd8eb085a72984fdfa4effa40746458f5',
+  'c6b8d923e13448e2aaa3401fcc57d003',
+  '9dc53a7534c94008ab338ca174cec529',
+  'aeae5c0d888042b9a374f6cc36334499',
+  '17b2bb1a7191434d989bc757ea699f33',
+].join('\n');
+
+/* Multiple keys can be pasted into the same API key field (one per line, or separated
+   by comma/semicolon) — up to 5. fetchCandles() rotates through them: key #1 is tried
+   first every cycle; if it's rate-limited/invalid, the next one is tried automatically
+   within the same cycle so the live feed doesn't drop. See fetchCandles() below. */
+const MAX_API_KEYS = 5;
+const KEY_COOLDOWN_MS = 65000; // ~1 refresh cycle; give a failed key a brief rest before retrying it
 
 let state = {
-  apiKey:DEFAULT_API_KEY, symbol:'XAU/USD', interval:'15min', outputSize:300,
+  apiKeys:[], activeKeyIdx:0, keyCooldown:{}, lastKeySlot:null,
+  symbol:'XAU/USD', interval:'15min', outputSize:300,
   refreshMs:30000, notif:true, sound:true,
   preset:'Auto', tpMode:'Dynamic', qualityStrength:0.4,
   useAsym:true, useCharFlip:true, useEffAtr:true, useBreakeven:false, useEmaFilter:true,
   timer:null, candles:[], lastBarTime:null, notifPermission:false,
   csvMode:false,
 };
+
+function parseApiKeys(raw){
+  return (raw||'')
+    .split(/[\n,;]+/)
+    .map(s=>s.trim())
+    .filter(Boolean)
+    .filter((v,i,arr)=>arr.indexOf(v)===i) // dedup
+    .slice(0, MAX_API_KEYS);
+}
 
 let lastResult = null; // most recent computeEngine() output, kept for CSV export
 
@@ -413,11 +430,15 @@ function isValidCandleRow(c){
   return true;
 }
 
-async function fetchCandles(){
-  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(state.symbol)}&interval=${state.interval}&outputsize=${state.outputSize}&apikey=${encodeURIComponent(state.apiKey)}`;
+async function fetchCandlesWithKey(apiKey){
+  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(state.symbol)}&interval=${state.interval}&outputsize=${state.outputSize}&apikey=${encodeURIComponent(apiKey)}`;
   const res = await fetch(url);
   const json = await res.json();
-  if(json.status==='error' || json.code){ throw new Error(json.message || 'API error'); }
+  if(json.status==='error' || json.code){
+    const err = new Error(json.message || 'API error');
+    err.code = json.code;
+    throw err;
+  }
   if(!json.values) throw new Error('Format data tidak dikenal dari API.');
   const rawCount = json.values.length;
   const candles = json.values.map(v=>{
@@ -429,6 +450,54 @@ async function fetchCandles(){
   if(dropped>0) console.warn(`fetchCandles: ${dropped} baris tidak valid dari API dilewati (dari ${rawCount} total).`);
   if(candles.length===0) throw new Error('Semua data dari API tidak valid (OHLC kosong/rusak).');
   return candles;
+}
+
+/* Only fail over to the next key for errors that mean "this key is the problem"
+   (rate limit / quota exhausted / bad or suspended key). A bad symbol, a network
+   outage, or a malformed-response bug would fail identically on every key, so
+   those are thrown immediately instead of burning through the whole list. */
+function isFailoverWorthy(err){
+  if(err.code===429 || err.code===401 || err.code===403) return true;
+  if(/limit|quota|credit|suspend/i.test(err.message||'')) return true;
+  return false;
+}
+
+/* Tries state.apiKeys in rotation, starting from the last key that worked
+   (state.activeKeyIdx). Keys currently on cooldown (recently failed) are tried
+   last, not skipped outright — if every key is cooling down we still attempt
+   all of them rather than give up on a false "no data" state. On success,
+   activeKeyIdx sticks to whichever key worked, so the next cycle starts there. */
+async function fetchCandles(){
+  if(!state.apiKeys.length) throw new Error('Belum ada API key. Isi minimal 1 API key Twelve Data (atau pakai Mode CSV).');
+  const now = Date.now();
+  const n = state.apiKeys.length;
+  const order = Array.from({length:n}, (_,i)=> (state.activeKeyIdx+i)%n);
+  order.sort((a,b)=>{
+    const coolA = (state.keyCooldown[state.apiKeys[a]]||0) > now ? 1 : 0;
+    const coolB = (state.keyCooldown[state.apiKeys[b]]||0) > now ? 1 : 0;
+    return coolA - coolB; // stable sort: cooling-down keys pushed to the back, order preserved otherwise
+  });
+
+  let lastErr = null;
+  for(const idx of order){
+    const key = state.apiKeys[idx];
+    try{
+      const candles = await fetchCandlesWithKey(key);
+      state.activeKeyIdx = idx;
+      state.lastKeySlot = idx+1;
+      delete state.keyCooldown[key];
+      return candles;
+    }catch(err){
+      lastErr = err;
+      if(isFailoverWorthy(err) && n>1){
+        state.keyCooldown[key] = now + KEY_COOLDOWN_MS;
+        console.warn(`API key #${idx+1} gagal (${err.message}) — mencoba key cadangan berikutnya.`);
+        continue;
+      }
+      throw err; // single key, or a non-quota error not worth rotating for
+    }
+  }
+  throw new Error(`Semua ${n} API key gagal/limit. Pesan terakhir: ${lastErr ? lastErr.message : 'unknown'}`);
 }
 
 function parseCsv(text){
@@ -788,11 +857,12 @@ async function runCycle(){
     const candles = await fetchCandles();
     state.candles = candles;
     processAndRender(candles);
-    setConn('live','Live · '+new Date().toLocaleTimeString('id-ID'));
+    const keyTag = state.apiKeys.length>1 ? ` · Key #${state.lastKeySlot}/${state.apiKeys.length}` : '';
+    setConn('live','Live'+keyTag+' · '+new Date().toLocaleTimeString('id-ID'));
     setStatus('');
   }catch(err){
     setConn('err','Gagal ambil data');
-    setStatus('Fetch gagal: '+err.message+' — cek API key, atau pakai mode CSV di Pengaturan.', 'err');
+    setStatus('Fetch gagal: '+err.message+' — cek API key (utama & cadangan), atau pakai mode CSV di Pengaturan.', 'err');
   }
 }
 
@@ -840,7 +910,8 @@ document.querySelectorAll('.tabBtn').forEach(btn=>{
 });
 
 function collectSettingsFromForm(){
-  state.apiKey = document.getElementById('apiKeyInput').value.trim();
+  state.apiKeys = parseApiKeys(document.getElementById('apiKeyInput').value);
+  state.activeKeyIdx = 0; // restart rotation from key #1 (utama) whenever settings are (re)saved
   state.refreshMs = parseInt(document.getElementById('refreshSel').value,10);
   state.outputSize = clamp(parseInt(document.getElementById('outputSizeInput').value,10)||300,100,500);
   state.preset = document.getElementById('presetSel').value;
@@ -860,20 +931,23 @@ function collectSettingsFromForm(){
 const LS_KEY = 'gusera_sats_api_key';
 function persistApiKey(){
   try{
-    if(state.apiKey) localStorage.setItem(LS_KEY, state.apiKey);
+    // Stored newline-separated so restoreApiKey() can repopulate the textarea/input
+    // exactly as typed (key #1 = utama, sisanya = cadangan, in priority order).
+    if(state.apiKeys.length) localStorage.setItem(LS_KEY, state.apiKeys.join('\n'));
   }catch(e){ /* Safari private mode / storage disabled — ignore */ }
 }
 function restoreApiKey(){
   let saved = null;
   try{ saved = localStorage.getItem(LS_KEY); }catch(e){}
-  const key = saved || DEFAULT_API_KEY;
-  document.getElementById('apiKeyInput').value = key;
-  state.apiKey = key;
+  const raw = saved || DEFAULT_API_KEY;
+  document.getElementById('apiKeyInput').value = raw;
+  state.apiKeys = parseApiKeys(raw);
+  state.activeKeyIdx = 0;
 }
 
 document.getElementById('saveStartBtn').onclick = async ()=>{
   collectSettingsFromForm();
-  if(!state.apiKey){ setModalStatus('Isi API key Twelve Data dulu, atau gunakan tab Mode CSV.', 'err'); return; }
+  if(!state.apiKeys.length){ setModalStatus('Isi minimal 1 API key Twelve Data (atau tambahkan cadangan, satu per baris), atau gunakan tab Mode CSV.', 'err'); return; }
   persistApiKey();
   setModalStatus('Pengaturan disimpan.', 'ok');
   overlay.classList.remove('open');
@@ -900,7 +974,7 @@ document.getElementById('csvLoadBtn').onclick = ()=>{
 
 document.getElementById('startBtn').onclick = async ()=>{
   collectSettingsFromForm();
-  if(!state.apiKey){ overlay.classList.add('open'); setModalStatus('Isi API key dulu untuk mulai live, atau pakai Mode CSV.', 'err'); return; }
+  if(!state.apiKeys.length){ overlay.classList.add('open'); setModalStatus('Isi API key dulu untuk mulai live, atau pakai Mode CSV.', 'err'); return; }
   if(state.notif && 'Notification' in window){
     try{ const p = await Notification.requestPermission(); state.notifPermission = p==='granted'; }catch(e){}
   }
