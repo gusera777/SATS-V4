@@ -1246,7 +1246,7 @@ async function runGPTAnalysis(state) {
     if (!window.OPENAI_API_KEY) {
 
         return `
-📊 SATS AI ANALYSIS (OFFLINE MODE)
+🤖 SATS AI ANALYSIS (ACTIVE MODE)
 
 Market shows ${state.trend} structure with TQI ${state.tqi}.
 
