@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+
+<title>GUSERA SATS</title>
+
+<meta name="description" content="Self Aware Trend System untuk analisis XAU/USD real-time">
+<meta name="theme-color" content="#090B10">
+<meta name="color-scheme" content="dark">
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GUSERA SATS">
+
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css">
+
+</head>
+<body>
+
+<div class="app-shell">
+
+<!-- =====================================================
+     HEADER
+====================================================== -->
+<header class="app-header">
+
+    <div class="header-row">
+
+        <div class="brand">
+            <img src="logo-header.png" class="brand-logo" alt="GUSERA">
+            <div class="brand-text">
+                <h1>GUSERA SATS</h1>
+                <p>Self-Aware Trend System</p>
+            </div>
+        </div>
+
+        <div class="connection-pill" id="connectionStatus">
+            <span class="dot" id="connDot"></span>
+            <span id="connText">Offline</span>
+        </div>
+
+    </div>
+
+    <div class="header-row header-controls">
+
+        <select id="symbolSel" class="select">
+            <option value="XAU/USD">XAU/USD</option>
+        </select>
+
+        <select id="tfSel" class="select">
+            <option value="1min">M1</option>
+            <option value="5min">M5</option>
+            <option value="15min" selected>M15</option>
+            <option value="30min">M30</option>
+            <option value="1h">H1</option>
+            <option value="4h">H4</option>
+            <option value="1day">D1</option>
+        </select>
+
+        <button id="startBtn" class="btn btn-primary">▶ Mulai</button>
+        <button id="settingsBtn" class="btn btn-icon" aria-label="Pengaturan">⚙</button>
+
+    </div>
+
+    <div class="broker-pill">
+        <span>Broker</span>
+        <b id="brokerStatus">PAPER</b>
+    </div>
+
+</header>
+
+<!-- =====================================================
+     MAIN DASHBOARD
+====================================================== -->
+<main class="app-main">
+
+    <!-- PRICE -->
+    <section class="card">
+        <div class="card-header">
+            <h3 class="card-title">Harga XAU/USD</h3>
+            <span class="live-dot" aria-hidden="true"></span>
+        </div>
+        <div class="card-body">
+            <div class="priceNow" id="priceNow">—</div>
+            <div class="price-sub" id="priceSub">Klik Mulai untuk memuat data</div>
+        </div>
+    </section>
+
+    <!-- TREND -->
+    <section class="card">
+        <div class="card-header">
+            <h3 class="card-title">Status Trend</h3>
+            <span class="trendTag" id="trendTag">MENUNGGU DATA</span>
+        </div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="info-label">EMA 100</span>
+                <span class="trendTag" id="emaTag">EMA 100 —</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Engine</span>
+                <span class="statusMsg" id="statusMsg"></span>
+            </div>
+        </div>
+    </section>
+
+    <!-- TQI -->
+    <section class="card">
+        <div class="card-header">
+            <h3 class="card-title">Trend Quality Index</h3>
+            <span class="chip" id="tqiRegime">—</span>
+        </div>
+        <div class="card-body tqi-body">
+
+            <div class="gauge-wrap">
+                <canvas id="gaugeCanvas" width="120" height="120"></canvas>
+                <div class="gauge-value" id="tqiVal">—</div>
+            </div>
+
+            <div class="factor-list">
+
+                <div class="factor">
+                    <div class="factor-head"><span>Efficiency</span><span id="fErV">—</span></div>
+                    <div class="factor-track"><span class="factor-fill" id="fEr"></span></div>
+                </div>
+
+                <div class="factor">
+                    <div class="factor-head"><span>Volatility</span><span id="fVolV">—</span></div>
+                    <div class="factor-track"><span class="factor-fill" id="fVol"></span></div>
+                </div>
+
+                <div class="factor">
+                    <div class="factor-head"><span>Structure</span><span id="fStructV">—</span></div>
+                    <div class="factor-track"><span class="factor-fill" id="fStruct"></span></div>
+                </div>
+
+                <div class="factor">
+                    <div class="factor-head"><span>Momentum</span><span id="fMomV">—</span></div>
+                    <div class="factor-track"><span class="factor-fill" id="fMom"></span></div>
+                </div>
+
+            </div>
+
+        </div>
+    </section>
+
+    <!-- AI INSIGHT -->
+    <section class="card">
+        <div class="card-header">
+            <h3 class="card-title">AI Insight Engine</h3>
+            <span class="chip chip-active">ACTIVE</span>
+        </div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="info-label">Confidence</span>
+                <span id="aiConfidence">—</span>
+            </div>
+            <p class="ai-insight-text" id="aiInsightText">Menunggu analisis AI...</p>
+            <div class="ai-tags">
+                <span class="chip" id="aiBias">—</span>
+                <span class="chip" id="aiRisk">—</span>
+                <span class="chip" id="aiRegime">—</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- SELF LEARNING -->
+    <section class="card">
+        <div class="card-header">
+            <h3 class="card-title">Self-Learning Engine</h3>
+            <span class="chip chip-active">ADAPTIVE</span>
+        </div>
+        <div class="card-body">
+            <p class="ai-insight-text">Menyesuaikan selektivitas sinyal secara bertahap berdasarkan win rate riil dari riwayat sinyal (min. 10 trade).</p>
+            <div class="kv-grid" style="margin-top:12px;">
+                <div class="kv"><span class="k">Aggressiveness</span><span class="v" id="aiAggro">1.00</span></div>
+                <div class="kv"><span class="k">Sensitivity</span><span class="v" id="aiSense">1.00</span></div>
+                <div class="kv"><span class="k">Update Terakhir</span><span class="v" id="aiLearnTime">—</span></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- GPT -->
+    <section class="card">
+        <div class="card-header">
+            <h3 class="card-title">GPT Analyst</h3>
+            <button id="gptRunBtn" class="btn btn-secondary btn-sm">Generate</button>
+        </div>
+        <div class="card-body">
+            <div class="gpt-output" id="gptOutput">Klik "Generate" untuk analisis AI...</div>
+        </div>
+    </section>
+
+    <!-- POSITION -->
+    <section class="card">
+        <div class="card-header">
+            <h3 class="card-title">Posisi Aktif</h3>
+            <span class="statusPill flat" id="posStatus">FLAT</span>
+        </div>
+        <div class="card-body">
+            <div class="kv-grid">
+                <div class="kv"><span class="k">Entry</span><span class="v" id="tEntry">—</span></div>
+                <div class="kv"><span class="k">SL</span><span class="v" id="tSl">—</span></div>
+                <div class="kv"><span class="k">TP1</span><span class="v" id="tTp1">—</span></div>
+                <div class="kv"><span class="k">TP2</span><span class="v" id="tTp2">—</span></div>
+                <div class="kv"><span class="k">TP3</span><span class="v" id="tTp3">—</span></div>
+                <div class="kv"><span class="k">Mode</span><span class="v" id="tMode">—</span></div>
+                <div class="kv"><span class="k">Score</span><span class="v" id="tScore">—</span></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- STATS -->
+    <section class="card">
+        <div class="card-header">
+            <h3 class="card-title">Statistik Performa</h3>
+        </div>
+        <div class="card-body">
+            <div class="stat-grid">
+                <div class="stat"><span class="stat-label">Win Rate</span><span class="v" id="sWinRate">—</span></div>
+                <div class="stat"><span class="stat-label">Avg R</span><span class="v" id="sAvgR">—</span></div>
+                <div class="stat"><span class="stat-label">Total</span><span class="v" id="sCount">—</span></div>
+                <div class="stat"><span class="stat-label">Streak</span><span class="v" id="sStreak">—</span></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CHART -->
+    <section class="card card-wide">
+        <div class="card-header">
+            <h3 class="card-title">Chart Harga</h3>
+        </div>
+        <div class="card-body">
+            <div class="chart-wrap" id="chartWrap">
+                <canvas id="chartCanvas"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- SIGNAL LOG -->
+    <section class="card card-wide">
+        <div class="card-header">
+            <h3 class="card-title">Riwayat Sinyal</h3>
+            <span class="log-count" id="logCount">0 sinyal</span>
+        </div>
+        <div class="card-body log-body">
+
+            <div class="log-actions">
+                <button id="downloadHistoryBtn" class="btn btn-secondary btn-sm">⬇ Ekspor CSV</button>
+                <button id="resetBtn" class="btn btn-danger btn-sm">Reset</button>
+            </div>
+
+            <div class="log-table-wrap">
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Waktu</th><th>Sisi</th><th>Harga</th><th>Skor</th><th>Purity</th>
+                            <th>SL</th><th>TP1</th><th>TP2</th><th>TP3</th><th>Status</th><th>R:R</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logBody"></tbody>
+                </table>
+                <p class="log-empty" id="logEmpty">Belum ada sinyal. Mulai engine untuk mulai merekam riwayat.</p>
+            </div>
+
+        </div>
+    </section>
+
+</main>
+
+<!-- FOOTER -->
+<footer class="app-footer">
+    <div class="footer-inner">
+        <span>GUSERA SATS © 2026 ZEP SABBATH</span>
+        <span>Client-side AI Trading System</span>
+    </div>
+</footer>
+
+</div>
+
+<!-- =====================================================
+     TOAST
+====================================================== -->
+<div class="toast" id="toast"></div>
+
+<!-- =====================================================
+     SETTINGS MODAL
+====================================================== -->
+<div class="overlay" id="overlay">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+
+        <div class="modal-header">
+            <h2 class="modal-title" id="modalTitle">⚙ Pengaturan</h2>
+            <button id="closeModalBtn" class="modal-close" aria-label="Tutup">✕</button>
+        </div>
+
+        <div class="modal-tabs" role="tablist">
+            <button class="tabBtn active" data-tab="data">Data Live</button>
+            <button class="tabBtn" data-tab="strategy">Strategi</button>
+            <button class="tabBtn" data-tab="alert">Alert</button>
+            <button class="tabBtn" data-tab="csv">Mode CSV</button>
+        </div>
+
+        <div class="modal-body">
+
+            <!-- DATA LIVE -->
+            <div class="tabPane active" data-pane="data">
+
+                <label class="field">
+                    <span class="field-label">Twelve Data API Key</span>
+                    <input type="password" id="apiKeyInput" placeholder="Tempel API key di sini" autocomplete="off">
+                </label>
+
+                <label class="field">
+                    <span class="field-label">Interval Refresh</span>
+                    <select id="refreshSel" class="select">
+                        <option value="20000">20 detik</option>
+                        <option value="30000" selected>30 detik</option>
+                        <option value="60000">1 menit</option>
+                        <option value="120000">2 menit</option>
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span class="field-label">Jumlah Candle</span>
+                    <input type="number" id="outputSizeInput" min="100" max="500" step="50" value="300" inputmode="numeric">
+                </label>
+
+            </div>
+
+            <!-- STRATEGI -->
+            <div class="tabPane" data-pane="strategy">
+
+                <label class="field">
+                    <span class="field-label">Preset</span>
+                    <select id="presetSel" class="select">
+                        <option value="Auto" selected>Auto</option>
+                        <option value="Scalping">Scalping</option>
+                        <option value="Default">Default</option>
+                        <option value="Swing">Swing</option>
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span class="field-label">Mode TP</span>
+                    <select id="tpModeSel" class="select">
+                        <option value="Dynamic" selected>Dynamic</option>
+                        <option value="Fixed">Fixed</option>
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span class="field-label">Quality Influence</span>
+                    <input type="range" id="qualityStrengthInput" min="0" max="1" step="0.1" value="0.4">
+                </label>
+
+                <div class="toggle-list">
+                    <label class="toggle"><input type="checkbox" id="asymToggle" checked><span>Asymmetric Bands</span></label>
+                    <label class="toggle"><input type="checkbox" id="charFlipToggle" checked><span>Character-Flip Detection</span></label>
+                    <label class="toggle"><input type="checkbox" id="effAtrToggle" checked><span>Efficiency-Weighted ATR</span></label>
+                    <label class="toggle"><input type="checkbox" id="emaFilterToggle" checked><span>EMA100 Trend Filter</span></label>
+                    <label class="toggle"><input type="checkbox" id="breakevenToggle"><span>Breakeven Stop</span></label>
+                </div>
+
+            </div>
+
+            <!-- ALERT -->
+            <div class="tabPane" data-pane="alert">
+                <div class="toggle-list">
+                    <label class="toggle"><input type="checkbox" id="notifToggle" checked><span>Notifikasi Browser</span></label>
+                    <label class="toggle"><input type="checkbox" id="soundToggle" checked><span>Bunyi Alert</span></label>
+                </div>
+            </div>
+
+            <!-- CSV -->
+            <div class="tabPane" data-pane="csv">
+                <label class="field">
+                    <span class="field-label">Data Candle (time,open,high,low,close,volume)</span>
+                    <textarea id="csvInput" rows="6" placeholder="2026-07-03 10:00:00,2330.10,2332.40,2329.50,2331.80,0"></textarea>
+                </label>
+                <button id="csvLoadBtn" class="btn btn-secondary">Muat CSV</button>
+            </div>
+
+        </div>
+
+        <p class="statusMsg" id="modalStatus"></p>
+
+        <div class="modal-footer">
+            <button id="saveStartBtn" class="btn btn-primary">Simpan &amp; Mulai</button>
+        </div>
+
+    </div>
+</div>
+
+<script src="app.js" defer></script>
+
+</body>
+</html>
